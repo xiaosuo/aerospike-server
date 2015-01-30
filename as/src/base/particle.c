@@ -17,7 +17,7 @@
  * details.
  *
  * You should have received a copy of the GNU Affero General Public License
- * along with this program.  If not, see http://www.gnu.org/licenses/
+ * along with this program.	 If not, see http://www.gnu.org/licenses/
  */
 
 /*
@@ -82,7 +82,7 @@ uint32_t as_particle_get_base_size_null(uint8_t particle_type)
 //
 
 typedef struct as_particle_int_s {
-	uint8_t 		do_not_use;	// already know it's an int type
+	uint8_t			do_not_use;	// already know it's an int type
 	uint64_t		i;
 } __attribute__ ((__packed__)) as_particle_int;
 
@@ -570,6 +570,7 @@ as_particle_setter g_particle_setter_table[AS_PARTICLE_TYPE_MAX] = {
 	[AS_PARTICLE_TYPE_LIST]				= as_particle_set_blob,
 	[AS_PARTICLE_TYPE_HIDDEN_LIST]		= as_particle_set_blob,
 	[AS_PARTICLE_TYPE_HIDDEN_MAP]		= as_particle_set_blob,
+	[AS_PARTICLE_TYPE_GEOJSON]			= as_particle_set_blob,
 };
 
 typedef int (*as_particle_getter) (as_particle *p, void *data, uint32_t *sz);
@@ -598,6 +599,7 @@ as_particle_getter g_particle_getter_table[AS_PARTICLE_TYPE_MAX] = {
 	[AS_PARTICLE_TYPE_LIST]				= as_particle_get_blob,
 	[AS_PARTICLE_TYPE_HIDDEN_LIST]		= as_particle_get_blob,
 	[AS_PARTICLE_TYPE_HIDDEN_MAP]		= as_particle_get_blob,
+	[AS_PARTICLE_TYPE_GEOJSON]			= as_particle_get_blob,
 };
 
 
@@ -626,6 +628,7 @@ as_particle_getter_p g_particle_getter_p_table[AS_PARTICLE_TYPE_MAX] = {
 	[AS_PARTICLE_TYPE_LIST]				= as_particle_get_p_blob,
 	[AS_PARTICLE_TYPE_HIDDEN_LIST]		= as_particle_get_p_blob,
 	[AS_PARTICLE_TYPE_HIDDEN_MAP]		= as_particle_get_p_blob,
+	[AS_PARTICLE_TYPE_GEOJSON]			= as_particle_get_p_blob,
 };
 
 typedef void (*as_particle_destructor) (as_particle *p);
@@ -654,6 +657,7 @@ as_particle_destructor g_particle_destructor_table[AS_PARTICLE_TYPE_MAX] = {
 	[AS_PARTICLE_TYPE_LIST]				= as_particle_destruct_blob,
 	[AS_PARTICLE_TYPE_HIDDEN_LIST]		= as_particle_destruct_blob,
 	[AS_PARTICLE_TYPE_HIDDEN_MAP]		= as_particle_destruct_blob,
+	[AS_PARTICLE_TYPE_GEOJSON]			= as_particle_destruct_blob,
 };
 
 typedef uint32_t (*as_particle_get_flat) (as_particle *p);
@@ -682,6 +686,7 @@ as_particle_get_flat g_particle_get_flat_table[AS_PARTICLE_TYPE_MAX] = {
 	[AS_PARTICLE_TYPE_LIST]				= as_particle_get_flat_blob,
 	[AS_PARTICLE_TYPE_HIDDEN_LIST]		= as_particle_get_flat_blob,
 	[AS_PARTICLE_TYPE_HIDDEN_MAP]		= as_particle_get_flat_blob,
+	[AS_PARTICLE_TYPE_GEOJSON]			= as_particle_get_flat_blob,
 };
 
 typedef int (*as_particle_compare) (as_particle *p, void *data, uint32_t sz);
@@ -710,6 +715,7 @@ as_particle_compare g_particle_compare_table[AS_PARTICLE_TYPE_MAX] = {
 	[AS_PARTICLE_TYPE_LIST]				= as_particle_compare_blob,
 	[AS_PARTICLE_TYPE_HIDDEN_LIST]		= as_particle_compare_blob,
 	[AS_PARTICLE_TYPE_HIDDEN_MAP]		= as_particle_compare_blob,
+	[AS_PARTICLE_TYPE_GEOJSON]			= as_particle_compare_blob,
 };
 
 typedef uint32_t (*as_particle_get_base) (uint8_t particle_type);
@@ -738,6 +744,7 @@ as_particle_get_base g_particle_get_base_size_table[AS_PARTICLE_TYPE_MAX] = {
 	[AS_PARTICLE_TYPE_LIST]				= as_particle_get_base_size_blob,
 	[AS_PARTICLE_TYPE_HIDDEN_LIST]		= as_particle_get_base_size_blob,
 	[AS_PARTICLE_TYPE_HIDDEN_MAP]		= as_particle_get_base_size_blob,
+	[AS_PARTICLE_TYPE_GEOJSON]			= as_particle_get_base_size_blob,
 };
 
 
@@ -901,7 +908,7 @@ cl_strtoll(char *p_str, uint32_t len, int64_t *o_int64)
 		return false;
 	}
 
-	*o_int64 =  rv;
+	*o_int64 =	rv;
 
 	return true;
 }
@@ -920,7 +927,7 @@ void particle_append_prepend_data_impl(as_bin *b, as_particle_type existing_type
 		return;
 	}
 
-	uint8_t  *p_new_data = NULL;
+	uint8_t	 *p_new_data = NULL;
 	as_particle *p_particle_ret = NULL;
 
 	switch(existing_type) {
@@ -1285,3 +1292,11 @@ as_particle_type_hidden(as_particle_type type)
 		return false;
 	}
 }
+
+// Local Variables:
+// mode: C
+// c-basic-offset: 4
+// tab-width: 4
+// indent-tabs-mode: t
+// End:
+// vim: tabstop=4:shiftwidth=4
