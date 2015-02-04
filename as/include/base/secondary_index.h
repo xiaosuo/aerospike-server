@@ -1,7 +1,7 @@
 /*
  * secondary_index.h
  *
- * Copyright (C) 2012-2014 Aerospike, Inc.
+ * Copyright (C) 2012-2015 Aerospike, Inc.
  *
  * Portions may be licensed to Aerospike, Inc. under one or more contributor
  * license agreements.
@@ -130,13 +130,15 @@ typedef enum {
 	AS_SINDEX_KTYPE_NONE   = 0,
 	AS_SINDEX_KTYPE_LONG   = 2, //Particle type INT
 	AS_SINDEX_KTYPE_FLOAT  = 4, //Particle type INT
-	AS_SINDEX_KTYPE_DIGEST = 10
+	AS_SINDEX_KTYPE_DIGEST = 10,
+	AS_SINDEX_KTYPE_2DSPHERE = 12
 } as_sindex_ktype;
 
 typedef enum {
 	AS_SINDEX_KEY_TYPE_LONG   = 0,
 	AS_SINDEX_KEY_TYPE_DIGEST = 1,
-	AS_SINDEX_KEY_TYPE_MAX    = 2
+	AS_SINDEX_KEY_TYPE_2DSPHERE = 2,
+	AS_SINDEX_KEY_TYPE_MAX    = 3
 } as_sindex_key_type;
 // **************************************************************************************************
 
@@ -690,4 +692,10 @@ extern bool as_sindex_partition_isactive(as_namespace *ns, cf_digest *digest);
 extern int  as_sindex_repair(as_namespace *ns, as_sindex_metadata *imd);
 // **************************************************************************************************
 
-
+// Local Variables:
+// mode: C
+// c-basic-offset: 4
+// tab-width: 4
+// indent-tabs-mode: t
+// End:
+// vim: tabstop=4:shiftwidth=4

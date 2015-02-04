@@ -1,7 +1,7 @@
 /*
  * thr_info.c
  *
- * Copyright (C) 2008-2014 Aerospike, Inc.
+ * Copyright (C) 2008-2015 Aerospike, Inc.
  *
  * Portions may be licensed to Aerospike, Inc. under one or more contributor
  * license agreements.
@@ -6211,11 +6211,13 @@ as_info_parse_params_to_sindex_imd(char* params, as_sindex_metadata *imd, cf_dyn
 			imd->btype[i] = AS_SINDEX_KTYPE_DIGEST;
 		} else if (strncasecmp(type_str, "numeric", 7) == 0) {
 			imd->btype[i] = AS_SINDEX_KTYPE_LONG;
+		} else if (strncasecmp(type_str, "2dsphere", 8) == 0) {
+			imd->btype[i] = AS_SINDEX_KTYPE_2DSPHERE;
 		} else {
 			cf_warning(AS_INFO, "Failed to create secondary index : invalid bin type %s "
 					"for sindex creation %s", type_str, indexname_str);
 			INFO_COMMAND_SINDEX_FAILCODE(AS_PROTO_RESULT_FAIL_PARAMETER,
-					"Invalid type must be [numeric,string]");
+					"Invalid type must be [numeric,string,2dsphere]");
 			cf_vector_destroy(str_v);
 			return AS_SINDEX_ERR_PARAM;
 		}
@@ -7058,3 +7060,11 @@ as_info_init()
 
 	return(0);
 }
+
+// Local Variables:
+// mode: C
+// c-basic-offset: 4
+// tab-width: 4
+// indent-tabs-mode: t
+// End:
+// vim: tabstop=4:shiftwidth=4

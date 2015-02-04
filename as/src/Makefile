@@ -16,6 +16,7 @@ BASE_HEADERS += thr_tsvc.h thr_write.h transaction.h transaction_policy.h
 BASE_HEADERS += udf_aerospike.h udf_arglist.h udf_cask.h
 BASE_HEADERS += udf_memtracker.h udf_record.h udf_rw.h udf_timer.h
 BASE_HEADERS += write_request.h xdr_serverside.h
+BASE_HEADERS += geospatial.h
 
 BASE_SOURCES += aggr.c as.c asm.c bin.c cfg.c cluster_config.c index.c json_init.c
 BASE_SOURCES += ldt.c ldt_record.c ldt_aerospike.c monitor.c namespace.c packet_compression.c
@@ -24,6 +25,7 @@ BASE_SOURCES += thr_batch.c thr_demarshal.c thr_info.c thr_info_port.c thr_nsup.
 BASE_SOURCES += thr_query.c thr_rw.c thr_sindex.c thr_tscan.c thr_tsvc.c transaction.c
 BASE_SOURCES += udf_aerospike.c udf_arglist.c udf_cask.c
 BASE_SOURCES += udf_memtracker.c udf_record.c udf_rw.c udf_timer.c
+BASE_SOURCES += geospatial.c
 ifneq ($(USE_XDR),1)
   BASE_SOURCES += xdr_serverside_stubs.c
 endif

@@ -1,7 +1,7 @@
 /*
  * secondary_index.c
  *
- * Copyright (C) 2012-2014 Aerospike, Inc.
+ * Copyright (C) 2012-2015 Aerospike, Inc.
  *
  * Portions may be licensed to Aerospike, Inc. under one or more contributor
  * license agreements.
@@ -52,6 +52,7 @@
 
 #include "base/thr_scan.h"
 #include "base/secondary_index.h"
+#include "base/geospatial.h"
 #include "base/thr_sindex.h"
 #include "base/system_metadata.h"
 
@@ -582,6 +583,7 @@ as_sindex_pktype_from_sktype(as_sindex_ktype t)
 		case AS_SINDEX_KTYPE_LONG:    return AS_PARTICLE_TYPE_INTEGER;
 		case AS_SINDEX_KTYPE_FLOAT:   return AS_PARTICLE_TYPE_FLOAT;
 		case AS_SINDEX_KTYPE_DIGEST:  return AS_PARTICLE_TYPE_STRING;
+		case AS_SINDEX_KTYPE_2DSPHERE:  return AS_PARTICLE_TYPE_GEOJSON;
 		default: cf_crash(AS_SINDEX, "Key type not known");
 	}
 	return AS_SINDEX_ERR_UNKNOWN_KEYTYPE;
@@ -593,6 +595,7 @@ as_sindex_key_type_from_pktype(as_particle_type t)
 	switch(t) {
 		case AS_PARTICLE_TYPE_INTEGER :     return AS_SINDEX_KEY_TYPE_LONG;
 		case AS_PARTICLE_TYPE_STRING  :     return AS_SINDEX_KEY_TYPE_DIGEST;
+		case AS_PARTICLE_TYPE_GEOJSON :     return AS_SINDEX_KEY_TYPE_2DSPHERE;
 		default                       :     {
 			cf_warning(AS_SINDEX, "bad particle type %d", t);
 			return AS_SINDEX_KEY_TYPE_MAX;
@@ -608,6 +611,7 @@ as_sindex_sktype_from_pktype(as_particle_type t)
 		case AS_PARTICLE_TYPE_INTEGER :     return AS_SINDEX_KTYPE_LONG;
 		case AS_PARTICLE_TYPE_FLOAT   :     return AS_SINDEX_KTYPE_FLOAT;
 		case AS_PARTICLE_TYPE_STRING  :     return AS_SINDEX_KTYPE_DIGEST;
+		case AS_PARTICLE_TYPE_GEOJSON :     return AS_SINDEX_KTYPE_2DSPHERE;
 		default                       :     return AS_SINDEX_KTYPE_NONE;
 	}
 	return AS_SINDEX_KTYPE_NONE;
@@ -801,26 +805,29 @@ as_sindex__op_by_sbin(as_namespace *ns, const char *set, int numbins, as_sindex_
 			}
 	//		Get a value from sbin
 			void * skey;
-			if (sbin->type == AS_PARTICLE_TYPE_INTEGER) {
+            switch (sbin->type) {
+            case AS_PARTICLE_TYPE_INTEGER:
+            case AS_PARTICLE_TYPE_GEOJSON:
 				if (j==0) {
 					skey = (void *)&(sbin->value.int_val);
 				}
 				else {
 					skey = (void *)((uint64_t *)(sbin->values) + j);
 				}
-			}
-			else if (sbin->type == AS_PARTICLE_TYPE_STRING) {
+                break;
+            case AS_PARTICLE_TYPE_STRING:
 				if (j==0) {
 					skey = (void *)&(sbin->value.str_val);
 				}
 				else {
 					skey = (void *)((cf_digest *)(sbin->values) + j);
 				}
-			}
-			else {
+                break;
+            default:
 				retval = AS_SINDEX_ERR;
 				goto Cleanup;
 			}
+
 	//			Get the related pimd	
 			pimd = &imd->pimd[ai_btree_key_hash(imd, skey)];
 			uint64_t starttime = 0;
@@ -2616,12 +2623,29 @@ as_sindex_add_digest_from_asval(as_val *val, as_sindex_bin *sbin)
 	return as_sindex_add_string_to_sbin(sbin, str_val);
 }
 
+as_sindex_status
+as_sindex_add_cellid_from_asval(as_val *val, as_sindex_bin *sbin)
+{
+	if (!val) {
+		return AS_SINDEX_ERR;
+	}
+	if (sbin->type != AS_PARTICLE_TYPE_GEOJSON) {
+		return AS_SINDEX_ERR;
+	}
+
+	// FIXME - convert the GeoJSON to a cellid here!
+	uint64_t int_val = 42;
+
+	return as_sindex_add_integer_to_sbin(sbin, int_val);
+}
+
 typedef as_sindex_status (*as_sindex_add_keytype_from_asval_fn)
 (as_val *val, as_sindex_bin * sbin);
 static const as_sindex_add_keytype_from_asval_fn 
 			 as_sindex_add_keytype_from_asval[AS_SINDEX_KEY_TYPE_MAX] = {
 	as_sindex_add_long_from_asval,
-	as_sindex_add_digest_from_asval
+	as_sindex_add_digest_from_asval,
+	as_sindex_add_cellid_from_asval
 };
 
 
@@ -3395,6 +3419,44 @@ as_sindex_sbin_from_sindex(as_sindex * si, as_bin *b, as_sindex_bin * sbin, as_v
 					}
 				}
 			}
+			else if (bin_type == AS_PARTICLE_TYPE_GEOJSON) {
+				// GeoJSON is like AS_PARTICLE_TYPE_STRING when
+				// reading the value and AS_PARTICLE_TYPE_INTEGER for
+				// adding the result to the index.
+				found = true;
+				byte* bin_val;
+				uint64_t cellid = 0;
+				bool valid_cellid = true;
+				if (from_buf) {
+					if ( buf_sz < 0 || buf_sz > AS_SINDEX_MAX_STRING_KSIZE) {
+						cf_warning( AS_SINDEX, "sindex key size out of bounds %d ", buf_sz);
+						valid_cellid = false;
+					}
+					else {
+						if (!geo_parse_json(buf, buf_sz, &cellid))
+							valid_cellid = false;
+					}
+				}
+				else {
+					as_particle_tobuf(b, 0, &valsz);
+					if ( valsz < 0 || valsz > AS_SINDEX_MAX_STRING_KSIZE) {
+						cf_warning( AS_SINDEX, "sindex key size out of bounds %d ", valsz);
+						valid_cellid = false;
+					}
+					else {
+						as_particle_p_get(b, &bin_val, &valsz);
+						if (!geo_parse_json(bin_val, valsz, &cellid))
+							valid_cellid = false;
+					}
+				}
+				if (valid_cellid) {
+					if (as_sindex_add_integer_to_sbin(sbin, cellid) == AS_SINDEX_OK) {
+						if (sbin->num_values) {
+							sindex_found++;
+						}
+					}
+				}
+			}
 		}
 	}
 	// 		Else if path_length > 0 OR type == MAP or LIST 
@@ -3606,6 +3668,60 @@ as_sindex_diff_sbins_from_sindex(as_sindex * si, as_bin * b, byte * buf, uint32_
 					if (valid_bufstr) {
 						as_sindex_init_sbin(sbin, AS_SINDEX_OP_INSERT, imd_btype, simatch);
 						if (as_sindex_add_digest_to_sbin(sbin, buf_dig) == AS_SINDEX_OK) {
+							if (sbin->num_values) {
+								sindex_found++;
+							}
+						}
+					}
+				}
+			}
+			else if (type == AS_PARTICLE_TYPE_GEOJSON) {
+				// GeoJSON is like AS_PARTICLE_TYPE_STRING when
+				// reading the value and AS_PARTICLE_TYPE_INTEGER for
+				// adding the result to the index.
+				found = true;
+				bool valid_bincellid = true;
+				bool valid_bufcellid = true;
+				byte* bin_str;
+				uint64_t bin_cellid, buf_cellid;
+				bool has_changed = true;
+				if ( buf_sz < 0 || buf_sz > AS_SINDEX_MAX_STRING_KSIZE) {
+					cf_warning( AS_SINDEX, "sindex key size out of bounds %d ", buf_sz);
+					valid_bufcellid = false;
+				}
+				else {
+					if (!geo_parse_json(buf, buf_sz, &buf_cellid))
+						valid_bufcellid = false;
+				}
+
+				as_particle_tobuf(b, 0, &valsz);
+				if ( valsz < 0 || valsz > AS_SINDEX_MAX_STRING_KSIZE) {
+					cf_warning( AS_SINDEX, "sindex key size out of bounds %d ", valsz);
+					valid_bincellid = false;
+				}
+				else {
+					as_particle_p_get(b, &bin_str, &valsz);
+					if (!geo_parse_json(bin_str, valsz, &bin_cellid))
+						valid_bincellid = false;
+				}
+
+				if (valid_bufcellid && valid_bincellid) {
+					has_changed = bin_cellid != buf_cellid;
+				}
+
+				if (has_changed) {
+					if (valid_bincellid) {
+						as_sindex_init_sbin(sbin, AS_SINDEX_OP_DELETE, imd_btype, simatch);
+						if (as_sindex_add_integer_to_sbin(sbin, bin_cellid) == AS_SINDEX_OK) {
+							if (sbin->num_values) {
+								sindex_found++;
+								sbin = sbin + sindex_found;
+							}
+						}
+					}
+					if (valid_bufcellid) {
+						as_sindex_init_sbin(sbin, AS_SINDEX_OP_INSERT, imd_btype, simatch);
+						if (as_sindex_add_integer_to_sbin(sbin, buf_cellid) == AS_SINDEX_OK) {
 							if (sbin->num_values) {
 								sindex_found++;
 							}
@@ -4867,3 +4983,11 @@ END:
 	}
 	return NULL;
 }
+
+// Local Variables:
+// mode: C
+// c-basic-offset: 4
+// tab-width: 4
+// indent-tabs-mode: t
+// End:
+// vim: tabstop=4:shiftwidth=4
