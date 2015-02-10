@@ -119,6 +119,7 @@
 
 #include "base/aggr.h"
 #include "base/datamodel.h"
+#include "base/geospatial.h"
 #include "base/secondary_index.h"
 #include "base/thr_tsvc.h"
 #include "base/transaction.h"
@@ -1294,6 +1295,24 @@ as_query_record_matches(as_query_transaction *qtr, as_storage_rd *rd)
 			}
 			break;
 		}
+		case AS_PARTICLE_TYPE_GEOJSON : {
+			if ((type != as_sindex_pktype_from_sktype(qtr->si->imd->btype[0]))
+			|| (type != start->type)
+			|| (type != end->type)) {
+				cf_debug(AS_QUERY, "as_query_record_matches: Type mismatch %d!=%d!=%d!=%d  binname=%s index=%s",
+					type, start->type, end->type, as_sindex_pktype_from_sktype(qtr->si->imd->btype[0]),
+					qtr->si->imd->bnames[0], qtr->si->imd->iname);
+				return false;
+			}
+
+			uint32_t psz = 32;
+			as_particle_tobuf(b, NULL, &psz);
+			char buf[psz + 1];
+			as_particle_tobuf(b, (uint8_t *) buf, &psz);
+			buf[psz]     = '\0';
+
+            return geo_region_contains(qtr->srange->region, buf, psz);
+		}
 		case AS_PARTICLE_TYPE_MAP : {
 			as_val * v = as_val_frombin(b);
 			res_val = as_sindex_extract_val_from_path(qtr->si->imd, v);	
@@ -1751,15 +1770,16 @@ as_query__generator_get_nextbatch(as_query_transaction *qtr)
 		time_ns = cf_getns();
 	}
 
+	as_sindex_range *srange  = &qtr->srange[qctx->range_index];
+
 	if (qctx->pimd_idx == -1) {
-		if (!qtr->srange->isrange) {
-			qctx->pimd_idx   = ai_btree_key_hash_from_sbin(si->imd, &qtr->srange->start);
+		if (!srange->isrange) {
+			qctx->pimd_idx   = ai_btree_key_hash_from_sbin(si->imd, &srange->start);
 		} else {
 			qctx->pimd_idx   = 0;
 		}
 	}
 
-	as_sindex_range *srange  = qtr->srange;
 	if (!qctx->recl) {
 		qctx->recl = cf_malloc(sizeof(cf_ll));
 		cf_ll_init(qctx->recl, ll_recl_destroy_fn, false /*no lock*/);
@@ -1804,11 +1824,27 @@ as_query__generator_get_nextbatch(as_query_transaction *qtr)
 		qctx->nbtr_done      = false;
 		qctx->pimd_idx++;
 		cf_detail(AS_QUERY, "All the Data finished moving to next tree %d", qctx->pimd_idx);
-		if (!srange->isrange || (qctx->pimd_idx == si->imd->nprts)) {
+        if (!srange->isrange) {
 			qtr->result_code = AS_PROTO_RESULT_OK;
 			ret              = AS_QUERY_DONE;
 			goto batchout;
-		}
+        }
+        if (qctx->pimd_idx == si->imd->nprts) {
+
+            // Geospatial queries need to search multiple ranges.  The
+            // srange object is a vector of MAX_REGION_CELLS elements.
+            // We iterate over ranges until we encounter an empty
+            // srange (num_binval == 0).
+            //
+            if (qctx->range_index == (MAX_REGION_CELLS - 1) ||
+                qtr->srange[qctx->range_index+1].num_binval == 0) {
+                qtr->result_code = AS_PROTO_RESULT_OK;
+                ret              = AS_QUERY_DONE;
+                goto batchout;
+            }
+            qctx->range_index++;
+            qctx->pimd_idx = -1;
+        }
 		ret = AS_QUERY_CONTINUE;
 		goto batchout;
 	}

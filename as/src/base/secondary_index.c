@@ -2130,6 +2130,7 @@ as_sindex_range_free(as_sindex_range **range)
 	as_sindex_range *sk = (*range);
 //	as_sindex_sbin_freeall(&sk->start, sk->num_binval);
 //	as_sindex_sbin_freeall(&sk->end, sk->num_binval);
+	geo_region_destroy(sk->region);
 	cf_free(sk);
 	return AS_SINDEX_OK;
 }
@@ -2245,7 +2246,12 @@ as_sindex_range_from_msg(as_namespace *ns, as_msg *msgp, as_sindex_range *srange
 					"can't handle multiple ranges right now %d", rfp->data[0]);
 		return AS_SINDEX_ERR_PARAM;
 	}
-	memset(srange, 0, sizeof(as_sindex_range));
+
+	// NOTE - to support geospatial queries the srange object is actually a vector
+	// of MAX_REGION_CELLS elements.  Normal queries only use the first element.
+	// Geospatial queries use multiple elements.
+	//
+	memset(srange, 0, sizeof(as_sindex_range) * MAX_REGION_CELLS);
 	if (itype_fp) {
 		srange->itype = *itype_fp->data;
 	}
@@ -2344,6 +2350,55 @@ as_sindex_range_from_msg(as_namespace *ns, as_msg *msgp, as_sindex_range *srange
 			cf_digest_compute(start_binval, startl, &(start->digest));
 			cf_debug(AS_SINDEX, "Range is equal %s ,%s",
                                start_binval, end_binval);
+		} else if (type == AS_PARTICLE_TYPE_GEOJSON) {
+			// get start point
+			uint32_t startl = ntohl(*((uint32_t *)data));
+			data += sizeof(uint32_t);
+			char* start_binval = (char *)data;
+			data += startl;
+
+			if ((startl <= 0) || (startl >= AS_SINDEX_MAX_STRING_KSIZE)) {
+				cf_warning(AS_SINDEX, "Out of bound query key size %ld", startl);
+				goto Cleanup;
+			}
+			uint32_t endl = ntohl(*((uint32_t *)data));
+			data += sizeof(uint32_t);
+			char * end_binval = (char *)data;
+			if (startl != endl && strncmp(start_binval, end_binval, startl)) {
+				cf_warning(AS_SINDEX,
+                           "Only Geospatial Query Supported on GeoJSON %s-%s",
+                           start_binval, end_binval);
+				goto Cleanup;
+			}
+
+			if (!geo_region_parse(start_binval, startl, &srange->region)) {
+				cf_warning(AS_GEO, "failed to cover query region");
+				goto Cleanup;
+			}
+
+			uint64_t cellmin[MAX_REGION_CELLS];
+			uint64_t cellmax[MAX_REGION_CELLS];
+			int numcells;
+			if (!geo_region_cover(srange->region, MAX_REGION_CELLS, cellmin, cellmax, &numcells)) {
+				cf_warning(AS_GEO, "failed to cover query region");
+				goto Cleanup;
+			}
+
+			// Geospatial queries use multiple srange elements.  Many
+			// of the fields are copied from the first cell because
+			// they were filled in above.
+			for (int ii = 0; ii < numcells; ++ii) {
+				srange[ii].num_binval = 1;
+				srange[ii].isrange = TRUE;
+				srange[ii].start.id = srange[0].start.id;
+				srange[ii].start.type = srange[0].start.type;
+				srange[ii].start.u.i64 = cellmin[ii];
+				srange[ii].end.id = srange[0].end.id;
+				srange[ii].end.type = srange[0].end.type;
+				srange[ii].end.u.i64 = cellmax[ii];
+				srange[ii].itype = srange[0].itype;
+			}
+
 		} else {
 			cf_warning(AS_SINDEX, "Only handle String and Numeric type");
 			goto Cleanup;
@@ -2375,7 +2430,13 @@ int
 as_sindex_rangep_from_msg(as_namespace *ns, as_msg *msgp, as_sindex_range **srange)
 {
 	cf_debug(AS_SINDEX, "as_sindex_rangep_from_msg");
-	*srange         = cf_malloc(sizeof(as_sindex_range));
+
+	// NOTE - to support geospatial queries we allocate an array of
+	// MAX_REGION_CELLS length.  Nongeospatial queries use only the
+	// first element.  Geospatial queries use one element per region
+	// cell, up to MAX_REGION_CELLS.
+
+	*srange         = cf_malloc(sizeof(as_sindex_range) * MAX_REGION_CELLS);
 	if (!(*srange)) {
 		cf_warning(AS_SINDEX,
                  "Could not Allocate memory for range key. Aborting Query ...");
@@ -2679,8 +2740,15 @@ as_sindex_add_cellid_from_asval(as_val *val, as_sindex_bin *sbin)
 		return AS_SINDEX_ERR;
 	}
 
-	// FIXME - convert the GeoJSON to a cellid here!
-	uint64_t int_val = 42;
+	as_string *s = as_string_fromval(val);
+	if (!s) {
+		return AS_SINDEX_ERR;
+	}
+	char * str_val = as_string_get(s);
+
+	uint64_t int_val;
+	if (!geo_map_point(str_val, strlen(str_val), &int_val))
+		return AS_SINDEX_ERR;
 
 	return as_sindex_add_integer_to_sbin(sbin, int_val);
 }
@@ -3504,7 +3572,7 @@ as_sindex_sbin_from_sindex(as_sindex * si, as_bin *b, as_sindex_bin * sbin, as_v
 						valid_cellid = false;
 					}
 					else {
-						if (!geo_parse_json(buf, buf_sz, &cellid))
+						if (!geo_map_point((char *) buf, buf_sz, &cellid))
 							valid_cellid = false;
 					}
 				}
@@ -3516,7 +3584,7 @@ as_sindex_sbin_from_sindex(as_sindex * si, as_bin *b, as_sindex_bin * sbin, as_v
 					}
 					else {
 						as_particle_p_get(b, &bin_val, &valsz);
-						if (!geo_parse_json(bin_val, valsz, &cellid))
+						if (!geo_map_point((char *) bin_val, valsz, &cellid))
 							valid_cellid = false;
 					}
 				}
@@ -3761,7 +3829,7 @@ as_sindex_diff_sbins_from_sindex(as_sindex * si, as_bin * b, byte * buf, uint32_
 					valid_bufcellid = false;
 				}
 				else {
-					if (!geo_parse_json(buf, buf_sz, &buf_cellid))
+					if (!geo_map_point((char *) buf, buf_sz, &buf_cellid))
 						valid_bufcellid = false;
 				}
 
@@ -3772,7 +3840,7 @@ as_sindex_diff_sbins_from_sindex(as_sindex * si, as_bin * b, byte * buf, uint32_
 				}
 				else {
 					as_particle_p_get(b, &bin_str, &valsz);
-					if (!geo_parse_json(bin_str, valsz, &bin_cellid))
+					if (!geo_map_point((char *) bin_str, valsz, &bin_cellid))
 						valid_bincellid = false;
 				}
 

@@ -29,6 +29,7 @@
 
 #include "base/datamodel.h"
 #include "base/monitor.h"
+#include "base/geospatial.h"
 #include "base/proto.h"
 #include "base/system_metadata.h"
 
@@ -57,6 +58,7 @@
 #define AS_SINDEX_MAX_PATH_LENGTH  256
 #define AS_SINDEX_MAX_DEPTH        10
 #define AS_SINDEX_TYPE_STR_SIZE    20
+#define MAX_REGION_CELLS		   32
 // **************************************************************************************************
 
 
@@ -383,6 +385,8 @@ typedef struct as_sindex_query_context_s {
 	uint64_t         bsize;
 	cf_ll            *recl;
 	uint64_t         n_bdigs;
+
+    int              range_index;
 		
 	// Physical Tree offset
 	bool             new_ibtr;		  // If new tree
@@ -405,6 +409,7 @@ typedef struct as_sindex_query_context_s {
  *  [0, endl]
  *  [startl, -1(inf)]
  *  [startl, endl]
+ *
  */
 typedef struct as_sindex_range_s {
 	byte                num_binval;
@@ -413,7 +418,9 @@ typedef struct as_sindex_range_s {
 	as_sindex_bin_data  end;
 	as_sindex_type      itype;
 	char                bin_path[AS_SINDEX_MAX_PATH_LENGTH];
+	geo_region_t		region;
 } as_sindex_range;
+
 // **************************************************************************************************
 
 

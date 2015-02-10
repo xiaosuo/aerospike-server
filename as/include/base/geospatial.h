@@ -28,7 +28,25 @@
 
 #include "citrusleaf/cf_types.h"
 
-extern bool geo_parse_json(const byte * buf, size_t buf_sz, uint64_t * cellid);
+typedef void * geo_region_t;
+
+extern bool geo_map_point(const char * buf, size_t bufsz, uint64_t * cellid);
+
+extern bool geo_region_parse(const char * buf,
+							 size_t bufsz,
+							 geo_region_t * regionp);
+
+extern bool geo_region_cover(geo_region_t region,
+							 int maxnumcells,
+							 uint64_t * cellminp,
+							 uint64_t * cellmaxp,
+							 int * numcellsp);
+
+extern bool geo_region_contains(geo_region_t region,
+								const byte * buf,
+								size_t bufsz);
+
+extern void geo_region_destroy(geo_region_t region);
 
 // Local Variables:
 // mode: C
