@@ -16,7 +16,6 @@ BASE_HEADERS += thr_tsvc.h thr_write.h transaction.h transaction_policy.h
 BASE_HEADERS += udf_aerospike.h udf_arglist.h udf_cask.h
 BASE_HEADERS += udf_memtracker.h udf_record.h udf_rw.h udf_timer.h
 BASE_HEADERS += write_request.h xdr_serverside.h
-BASE_HEADERS += geospatial.h
 
 BASE_SOURCES += aggr.c as.c asm.c bin.c cfg.c cluster_config.c index.c json_init.c
 BASE_SOURCES += ldt.c ldt_record.c ldt_aerospike.c monitor.c namespace.c packet_compression.c
@@ -25,7 +24,6 @@ BASE_SOURCES += thr_batch.c thr_demarshal.c thr_info.c thr_info_port.c thr_nsup.
 BASE_SOURCES += thr_query.c thr_rw.c thr_sindex.c thr_tscan.c thr_tsvc.c transaction.c
 BASE_SOURCES += udf_aerospike.c udf_arglist.c udf_cask.c
 BASE_SOURCES += udf_memtracker.c udf_record.c udf_rw.c udf_timer.c
-BASE_SOURCES += geospatial.c
 ifneq ($(USE_XDR),1)
   BASE_SOURCES += xdr_serverside_stubs.c
 endif
@@ -39,14 +37,17 @@ endif
 FABRIC_HEADERS += hb.h fabric.h fb_health.h migrate.h paxos.h
 FABRIC_SOURCES += hb.c fabric.c fb_health.c migrate.c partition.c paxos.c
 
+GEOSPATIAL_HEADERS += geospatial.h
+GEOSPATIAL_SOURCES += geospatial.cc geojson.cc
+
 STORAGE_HEADERS += storage.h drv_ssd.h
 STORAGE_SOURCES += storage.c drv_kv.c drv_memory.c drv_ssd.c
 ifneq ($(USE_WARM),1)
   STORAGE_SOURCES += drv_ssd_cold.c
 endif
 
-HEADERS = $(BASE_HEADERS:%=base/%) $(FABRIC_HEADERS:%=fabric/%) $(STORAGE_HEADERS:%=storage/%)
-SOURCES = $(BASE_SOURCES:%=base/%) $(FABRIC_SOURCES:%=fabric/%) $(STORAGE_SOURCES:%=storage/%)
+HEADERS = $(BASE_HEADERS:%=base/%) $(FABRIC_HEADERS:%=fabric/%) $(STORAGE_HEADERS:%=storage/%) $(GEOSPATIAL_HEADERS:%=geospatial/%)
+SOURCES = $(BASE_SOURCES:%=base/%) $(FABRIC_SOURCES:%=fabric/%) $(STORAGE_SOURCES:%=storage/%) $(GEOSPATIAL_SOURCES:%=geospatial/%)
 
 SERVER = $(BIN_DIR)/asd
 
@@ -59,6 +60,7 @@ INCLUDES += -I$(AI)/include
 INCLUDES += -I$(COMMON)/target/$(PLATFORM)/include
 INCLUDES += -I$(MOD_LUA)/target/$(PLATFORM)/include
 INCLUDES += -I$(JANSSON)/src
+INCLUDES += -I$(S2)
 
 ifeq ($(USE_LUAJIT),1)
   INCLUDES += -I$(LUAJIT)/src
@@ -107,6 +109,9 @@ else
   LIBRARIES += -L$(JANSSON)/src/.libs -ljansson
 endif
 
+LIBRARIES += -L$(S2) -ls2 -ls2cellid -lgoogle-strings -lgoogle-base \
+			-lgoogle-util-coding -lgoogle-util-math -lstdc++
+
 LIBRARIES := $(AS_LIBRARIES) $(LIBRARIES)
 
 ifneq ($(PREPRO),1)
@@ -120,7 +125,8 @@ ifeq ($(USE_KV),1)
   CFLAGS += -DUSE_KV
 endif
 
-OBJECTS = $(SOURCES:%.c=$(OBJECT_DIR)/%.o) $(VERSION_OBJ)
+OBJECTS.c = $(SOURCES:%.c=$(OBJECT_DIR)/%.o) $(VERSION_OBJ)
+OBJECTS = $(OBJECTS.c:%.cc=$(OBJECT_DIR)/%.o)
 DEPENDENCIES = $(OBJECTS:%.o=%.d)
 MEXP_SOURCES = $(SOURCES:%=$(MEXP_DIR)/%)
 PREPROS = $(OBJECTS:%=%$(PREPRO_SUFFIX))
@@ -142,3 +148,8 @@ ifneq ($(PREPRO),1)
 endif
 
 include $(DEPTH)/make_in/Makefile.targets
+
+# Ignore S2 induced warnings
+S2_WNO = -Wno-unused-local-typedefs -Wno-deprecated -Wno-sign-compare
+$(OBJECT_DIR)/geospatial/geojson.o: CXXFLAGS += $(S2_WNO)
+$(OBJECT_DIR)/geospatial/geospatial.o: CXXFLAGS += $(S2_WNO)

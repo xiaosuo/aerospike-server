@@ -119,7 +119,6 @@
 
 #include "base/aggr.h"
 #include "base/datamodel.h"
-#include "base/geospatial.h"
 #include "base/secondary_index.h"
 #include "base/thr_tsvc.h"
 #include "base/transaction.h"
@@ -127,6 +126,7 @@
 #include "base/udf_rw.h"
 #include "base/udf_record.h"
 #include "fabric/fabric.h"
+#include "geospatial/geospatial.h"
 
 // parameter read off from a transaction
 
@@ -1311,7 +1311,8 @@ as_query_record_matches(as_query_transaction *qtr, as_storage_rd *rd)
 			as_particle_tobuf(b, (uint8_t *) buf, &psz);
 			buf[psz]     = '\0';
 
-            return geo_region_contains(qtr->srange->region, buf, psz);
+            return geo_region_contains(qtr->srange->region,
+                                       (const char *) buf, psz);
 		}
 		case AS_PARTICLE_TYPE_MAP : {
 			as_val * v = as_val_frombin(b);

@@ -98,9 +98,10 @@
 
 #include "base/thr_scan.h"
 #include "base/secondary_index.h"
-#include "base/geospatial.h"
 #include "base/thr_sindex.h"
 #include "base/system_metadata.h"
+
+#include "geospatial/geospatial.h"
 
 #include "bt_iterator.h"
 #include "cf_str.h"

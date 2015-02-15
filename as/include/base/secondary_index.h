@@ -29,9 +29,10 @@
 
 #include "base/datamodel.h"
 #include "base/monitor.h"
-#include "base/geospatial.h"
 #include "base/proto.h"
 #include "base/system_metadata.h"
+
+#include "geospatial/geospatial.h"
 
 #include "citrusleaf/cf_atomic.h"
 #include "citrusleaf/cf_digest.h"

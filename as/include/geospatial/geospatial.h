@@ -28,6 +28,10 @@
 
 #include "citrusleaf/cf_types.h"
 
+#ifdef __cplusplus
+extern "C" {
+#endif
+
 typedef void * geo_region_t;
 
 extern bool geo_map_point(const char * buf, size_t bufsz, uint64_t * cellid);
@@ -43,13 +47,17 @@ extern bool geo_region_cover(geo_region_t region,
 							 int * numcellsp);
 
 extern bool geo_region_contains(geo_region_t region,
-								const byte * buf,
+								const char * buf,
 								size_t bufsz);
 
 extern void geo_region_destroy(geo_region_t region);
 
+#ifdef __cplusplus
+} // end extern "C"
+#endif
+
 // Local Variables:
-// mode: C
+// mode: C++
 // c-basic-offset: 4
 // tab-width: 4
 // indent-tabs-mode: t
