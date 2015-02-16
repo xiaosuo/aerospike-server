@@ -2358,7 +2358,7 @@ as_sindex_range_from_msg(as_namespace *ns, as_msg *msgp, as_sindex_range *srange
 			char* start_binval = (char *)data;
 			data += startl;
 
-			if ((startl <= 0) || (startl >= AS_SINDEX_MAX_STRING_KSIZE)) {
+			if ((startl <= 0) || (startl >= AS_SINDEX_MAX_GEOJSON_KSIZE)) {
 				cf_warning(AS_SINDEX, "Out of bound query key size %ld", startl);
 				goto Cleanup;
 			}
@@ -3568,7 +3568,7 @@ as_sindex_sbin_from_sindex(as_sindex * si, as_bin *b, as_sindex_bin * sbin, as_v
 				uint64_t cellid = 0;
 				bool valid_cellid = true;
 				if (from_buf) {
-					if ( buf_sz < 0 || buf_sz > AS_SINDEX_MAX_STRING_KSIZE) {
+					if ( buf_sz < 0 || buf_sz > AS_SINDEX_MAX_GEOJSON_KSIZE) {
 						cf_warning( AS_SINDEX, "sindex key size out of bounds %d ", buf_sz);
 						valid_cellid = false;
 					}
@@ -3579,7 +3579,7 @@ as_sindex_sbin_from_sindex(as_sindex * si, as_bin *b, as_sindex_bin * sbin, as_v
 				}
 				else {
 					as_particle_tobuf(b, 0, &valsz);
-					if ( valsz < 0 || valsz > AS_SINDEX_MAX_STRING_KSIZE) {
+					if ( valsz < 0 || valsz > AS_SINDEX_MAX_GEOJSON_KSIZE) {
 						cf_warning( AS_SINDEX, "sindex key size out of bounds %d ", valsz);
 						valid_cellid = false;
 					}
@@ -3825,7 +3825,7 @@ as_sindex_diff_sbins_from_sindex(as_sindex * si, as_bin * b, byte * buf, uint32_
 				byte* bin_str;
 				uint64_t bin_cellid, buf_cellid;
 				bool has_changed = true;
-				if ( buf_sz < 0 || buf_sz > AS_SINDEX_MAX_STRING_KSIZE) {
+				if ( buf_sz < 0 || buf_sz > AS_SINDEX_MAX_GEOJSON_KSIZE) {
 					cf_warning( AS_SINDEX, "sindex key size out of bounds %d ", buf_sz);
 					valid_bufcellid = false;
 				}
@@ -3835,7 +3835,7 @@ as_sindex_diff_sbins_from_sindex(as_sindex * si, as_bin * b, byte * buf, uint32_
 				}
 
 				as_particle_tobuf(b, 0, &valsz);
-				if ( valsz < 0 || valsz > AS_SINDEX_MAX_STRING_KSIZE) {
+				if ( valsz < 0 || valsz > AS_SINDEX_MAX_GEOJSON_KSIZE) {
 					cf_warning( AS_SINDEX, "sindex key size out of bounds %d ", valsz);
 					valid_bincellid = false;
 				}

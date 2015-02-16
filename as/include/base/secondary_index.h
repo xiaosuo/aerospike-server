@@ -52,6 +52,7 @@
  */
 // **************************************************************************************************
 #define AS_SINDEX_MAX_STRING_KSIZE 2048
+#define AS_SINDEX_MAX_GEOJSON_KSIZE (1024 * 1024)
 #define SINDEX_SMD_KEY_SIZE        AS_ID_INAME_SZ + AS_ID_NAMESPACE_SZ 
 #define SINDEX_SMD_VALUE_SIZE      (AS_SMD_MAJORITY_CONSENSUS_KEYSIZE)
 #define NUM_SINDEX_PARTITIONS      32

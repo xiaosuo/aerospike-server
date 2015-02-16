@@ -54,6 +54,7 @@ geo_map_point(const char * buf, size_t bufsz, uint64_t * cellidp)
 		PointHandler phandler;
 		GeoJSON::parse(phandler, string(buf, bufsz));
 		*cellidp = phandler.m_cellid.id();
+		cf_detail(AS_GEO, "cell 0x%llx", *cellidp);
 		return true;
 	}
 	catch (exception const & ex)
@@ -116,6 +117,9 @@ bool geo_region_cover(geo_region_t region,
 
 		cellminp[ii] = covering[ii].range_min().id();
 		cellmaxp[ii] = covering[ii].range_max().id();
+
+		cf_detail(AS_GEO, "cell[%02d]: [0x%llx, 0x%llx]",
+				  ii, cellminp[ii], cellmaxp[ii]);
 	}
 
 	*numcellsp = covering.size();
