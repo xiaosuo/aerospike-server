@@ -24,6 +24,7 @@
 #include <jansson.h>
 
 #include <s2.h>
+#include <s2cap.h>
 #include <s2cellid.h>
 #include <s2polygon.h>
 #include <s2regionunion.h>
@@ -36,6 +37,8 @@
 using namespace std;
 
 namespace {
+
+double const g_earthradius = 6378.1 * 1000;
 
 S2Point
 traverse_point(json_t * coord)
@@ -159,6 +162,38 @@ process_multipolygon(GeoJSON::GeometryHandler & geohand, json_t * coord)
         delete regionsp;
 }
 
+void
+process_circle(GeoJSON::GeometryHandler & geohand, json_t * coord)
+{
+    // {
+    //     "type": "Circle",
+    //     "coordinates": [[-122.097837, 37.421363], 1000.0]
+    // }
+
+    if (!coord)
+        throwstream(runtime_error, "missing coordinates");
+
+    if (!json_is_array(coord))
+        throwstream(runtime_error, "coordinates are not array");
+
+    if (json_array_size(coord) != 2)
+        throwstream(runtime_error, "malformed circle coordinate array");
+
+    S2Point center = traverse_point(json_array_get(coord, 0));
+
+    json_t * radiusobj = json_array_get(coord, 1);
+    if (!json_is_real(radiusobj))
+        throwstream(runtime_error, "radius not real value");
+    double radius = json_real_value(radiusobj);
+
+    S1Angle angle = S1Angle::Radians(radius / g_earthradius);
+
+    S2Cap * capp = S2Cap::FromAxisAngle(center, angle).Clone();
+
+    if (geohand.handle_region(capp))
+        delete capp;
+}
+
 void traverse_geometry(GeoJSON::GeometryHandler & geohand, json_t * geom)
 {
     if (!geom)
@@ -181,6 +216,8 @@ void traverse_geometry(GeoJSON::GeometryHandler & geohand, json_t * geom)
         process_polygon(geohand, json_object_get(geom, "coordinates"));
     else if (typestr == "MultiPolygon")
         process_multipolygon(geohand, json_object_get(geom, "coordinates"));
+    else if (typestr == "Circle")
+        process_circle(geohand, json_object_get(geom, "coordinates"));
     else
         throwstream(runtime_error, "unknown geometry type: " << typestr);
 }
@@ -230,6 +267,8 @@ void parse(GeometryHandler & geohand, string const & geostr)
         process_polygon(geohand, json_object_get(geojson, "coordinates"));
     else if (typestr == "MultiPolygon")
         process_multipolygon(geohand, json_object_get(geojson, "coordinates"));
+    else if (typestr == "Circle")
+        process_circle(geohand, json_object_get(geojson, "coordinates"));
     else
         throwstream(runtime_error, "unknown top-level type: " << typestr);
 }
