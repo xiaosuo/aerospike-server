@@ -481,6 +481,11 @@ info_get_stats(char *name, cf_dyn_buf *db)
 	cf_dyn_buf_append_string(db, ";err_rw_cant_put_unique=");
 	APPEND_STAT_COUNTER(db, g_config.err_rw_cant_put_unique);
 
+	cf_dyn_buf_append_string(db, ";geo_region_query_count=");
+	APPEND_STAT_COUNTER(db, g_config.geo_region_query_count);
+	cf_dyn_buf_append_string(db, ";geo_region_query_cells=");
+	APPEND_STAT_COUNTER(db, g_config.geo_region_query_cells);
+
 	cf_dyn_buf_append_string(db, ";fabric_msgs_sent=");
 	APPEND_STAT_COUNTER(db, g_config.fabric_msgs_sent);
 

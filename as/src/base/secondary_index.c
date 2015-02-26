@@ -2385,6 +2385,9 @@ as_sindex_range_from_msg(as_namespace *ns, as_msg *msgp, as_sindex_range *srange
 				goto Cleanup;
 			}
 
+			cf_atomic_int_incr(&g_config.geo_region_query_count);
+			cf_atomic_int_add(&g_config.geo_region_query_cells, numcells);
+
 			// Geospatial queries use multiple srange elements.  Many
 			// of the fields are copied from the first cell because
 			// they were filled in above.
