@@ -40,7 +40,8 @@ extern bool geo_region_parse(const char * buf,
 							 size_t bufsz,
 							 geo_region_t * regionp);
 
-extern bool geo_region_cover(geo_region_t region,
+extern bool geo_region_cover(as_namespace * ns,
+							 geo_region_t region,
 							 int maxnumcells,
 							 uint64_t * cellminp,
 							 uint64_t * cellmaxp,

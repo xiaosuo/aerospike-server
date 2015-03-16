@@ -161,6 +161,13 @@ as_namespace_create(char *name, uint16_t replication_factor)
 	ns->sindex_data_memory_used = 0;
 	ns->sindex_cfg_var_hash = NULL;
 
+    // Geospatial query within defaults
+    ns->geo_2dsphere_within_strict = true;
+    ns->geo_2dsphere_within_min_level = 1;
+    ns->geo_2dsphere_within_max_level = 30;
+    ns->geo_2dsphere_within_max_cells = 12;
+    ns->geo_2dsphere_within_level_mod = 1;
+
 	//
 	// END - Configuration defaults.
 	//--------------------------------------------

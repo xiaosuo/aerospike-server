@@ -333,6 +333,8 @@ typedef struct as_config_s {
     // Geospatial stats
 	cf_atomic_int		geo_region_query_count;		// Number of region queries
 	cf_atomic_int		geo_region_query_cells;		// Number of cells used by region queries
+	cf_atomic_int		geo_region_query_points;	// Number of valid points found
+	cf_atomic_int		geo_region_query_falsepos;	// Number of false positives found
 
 	/*
 	** STATISTICS

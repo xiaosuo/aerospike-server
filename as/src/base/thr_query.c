@@ -1311,8 +1311,17 @@ as_query_record_matches(as_query_transaction *qtr, as_storage_rd *rd)
 			as_particle_tobuf(b, (uint8_t *) buf, &psz);
 			buf[psz]     = '\0';
 
-            return geo_region_contains(qtr->srange->region,
-                                       (const char *) buf, psz);
+            bool iswithin = qtr->ns->geo_2dsphere_within_strict ?
+                geo_region_contains(qtr->srange->region,(const char *) buf, psz)
+                : true;
+
+            // We either found a valid point or a false positive.
+            if (iswithin)
+                cf_atomic_int_incr(&g_config.geo_region_query_points);
+            else
+                cf_atomic_int_incr(&g_config.geo_region_query_falsepos);
+
+            return iswithin;
 		}
 		case AS_PARTICLE_TYPE_MAP : {
 			as_val * v = as_val_frombin(b);

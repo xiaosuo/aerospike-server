@@ -30,6 +30,7 @@
 
 extern "C" {
 #include "fault.h"
+#include "base/datamodel.h"
 } // end extern "C"
 
 #include "geospatial/geospatial.h"
@@ -90,7 +91,8 @@ bool geo_region_parse(const char * buf, size_t bufsz, geo_region_t * regionp)
 	}
 }
 
-bool geo_region_cover(geo_region_t region,
+bool geo_region_cover(as_namespace * ns,
+					  geo_region_t region,
 					  int maxnumcells,
 					  uint64_t * cellminp,
 					  uint64_t * cellmaxp,
@@ -99,10 +101,10 @@ bool geo_region_cover(geo_region_t region,
 	S2Region * regionp = (S2Region *) region;
 
     S2RegionCoverer coverer;
-    coverer.set_min_level(1);
-    coverer.set_max_level(30);
-    coverer.set_max_cells(12);
-    coverer.set_level_mod(1);
+    coverer.set_min_level(ns->geo_2dsphere_within_min_level);
+    coverer.set_max_level(ns->geo_2dsphere_within_max_level);
+    coverer.set_max_cells(ns->geo_2dsphere_within_max_cells);
+    coverer.set_level_mod(ns->geo_2dsphere_within_level_mod);
     vector<S2CellId> covering;
     coverer.GetCovering(*regionp, &covering);
 	for (size_t ii = 0; ii < covering.size(); ++ii)

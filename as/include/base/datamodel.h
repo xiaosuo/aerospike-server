@@ -819,7 +819,7 @@ typedef enum {
 	AS_NAMESPACE_CONFLICT_RESOLUTION_POLICY_UNDEF = 0,
 	AS_NAMESPACE_CONFLICT_RESOLUTION_POLICY_GENERATION = 1,
 	AS_NAMESPACE_CONFLICT_RESOLUTION_POLICY_TTL = 2
-} conflict_resolution_policy;
+} conflict_resolution_policy_e;
 
 #define AS_SET_MAX_COUNT 0x3FF	// ID's 10 bits worth minus 1 (ID 0 means no set)
 #define AS_BINID_HAS_SINDEX_SIZE  MAX_BIN_NAMES / ( sizeof(uint32_t) * CHAR_BIT )
@@ -918,7 +918,7 @@ struct as_namespace_s {
 	/* Replication management */
 	uint16_t					replication_factor;
 	uint16_t					cfg_replication_factor;
-	conflict_resolution_policy	conflict_resolution_policy;
+	conflict_resolution_policy_e conflict_resolution_policy;
 	bool						allow_versions;	// allow consistancy errors to create duplicate versions
 	bool						single_bin;		// restrict the namespace to objects with exactly one bin
 	bool						data_in_index;	// with single-bin, allows warm restart for data-in-memory (with storage-engine device)
@@ -1045,6 +1045,13 @@ struct as_namespace_s {
 	shash				*sindex_set_binid_hash;
 	shash				*sindex_iname_hash;
 	uint32_t			 binid_has_sindex[AS_BINID_HAS_SINDEX_SIZE];
+
+	// Geospatial query within parameters.
+	bool			geo_2dsphere_within_strict;
+	uint16_t		geo_2dsphere_within_min_level;
+	uint16_t		geo_2dsphere_within_max_level;
+	uint16_t		geo_2dsphere_within_max_cells;
+	uint16_t		geo_2dsphere_within_level_mod;
 
 	// Current state of threshold breaches.
 	cf_atomic32		hwm_breached;

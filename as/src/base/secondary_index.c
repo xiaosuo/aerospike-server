@@ -2380,7 +2380,7 @@ as_sindex_range_from_msg(as_namespace *ns, as_msg *msgp, as_sindex_range *srange
 			uint64_t cellmin[MAX_REGION_CELLS];
 			uint64_t cellmax[MAX_REGION_CELLS];
 			int numcells;
-			if (!geo_region_cover(srange->region, MAX_REGION_CELLS, cellmin, cellmax, &numcells)) {
+			if (!geo_region_cover(ns, srange->region, MAX_REGION_CELLS, cellmin, cellmax, &numcells)) {
 				cf_warning(AS_GEO, "failed to cover query region");
 				goto Cleanup;
 			}
