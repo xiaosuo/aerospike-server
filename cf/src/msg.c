@@ -30,7 +30,7 @@
 
 #include "msg.h"
 
-#include <byteswap.h>
+#include <endian.h>
 #include <stdbool.h>
 #include <stddef.h>
 #include <stdint.h>
@@ -176,8 +176,6 @@ msg_decr_ref(msg *m)
 //      [x] - field
 //      (7 + field sz)
 
-// htonll - an 8 byte swap - found a good linux-only macro
-
 // The integer arrays are kept in network format and swapped in the accessor functions.
 // this allows the the zero-copy nature of the interface to be simpler
 
@@ -238,18 +236,16 @@ msg_parse(msg *m, const uint8_t *buf, const size_t buflen, bool copy)
 
 			switch (mf->type) {
 				case M_FT_INT32:
-					mf->u.i32 = htonl( *(uint32_t *) buf ); // problem is htonl really only works on unsigned?
+					mf->u.i32 = ntohl( *(uint32_t *) buf ); // problem is htonl really only works on unsigned?
 					break;
 				case M_FT_UINT32:
-					mf->u.ui32 = htonl( *(uint32_t *) buf );
+					mf->u.ui32 = ntohl( *(uint32_t *) buf );
 					break;
 				case M_FT_INT64:
-					mf->u.i64 = __bswap_64( *(uint64_t *) buf);
-					// htonll_p( &(mf->u.i64) , buf);
+					mf->u.i64 = be64toh( *(uint64_t *) buf);
 					break;
 				case M_FT_UINT64:
-					mf->u.ui64 = __bswap_64( *(uint64_t *) buf);
-					// htonll_p( &(mf->u.i64) , buf);
+					mf->u.ui64 = be64toh( *(uint64_t *) buf);
 					break;
 				case M_FT_STR:
 				case M_FT_BUF:
@@ -455,15 +451,13 @@ msg_stamp_field(uint8_t *buf, const msg_field *mf)
 		case M_FT_INT64:
 			flen = 8;
 			int64_t *b_i64 = (int64_t *)buf;
-			*b_i64 = __bswap_64(mf->u.i64);
-//			htonll_p(buf, (&mf->u.i64) );
+			*b_i64 = htobe64(mf->u.i64);
 			break;
 
 		case M_FT_UINT64:
 			flen = 8;
 			uint64_t *b_ui64 = (uint64_t *)buf;
-			*b_ui64 = __bswap_64(mf->u.ui64);
-//			htonll_p(buf, (&mf->u.ui64) );
+			*b_ui64 = htobe64(mf->u.ui64);
 			break;
 
 		case M_FT_STR:
@@ -1046,7 +1040,7 @@ msg_get_uint64_array(msg *m, int field_id, const int index, uint64_t *r)
 	msg_field *mf = &(m->f[field_id]);
 
 	if (mf->is_set == false) return(-1);
-	*r = __bswap_64( mf->u.ui64_a[index] );
+	*r = be64toh( mf->u.ui64_a[index] );
 
 	return(0);
 }
@@ -1084,7 +1078,7 @@ msg_set_uint64_array(msg *m, int field_id, const int index, const uint64_t v)
 	if (mf->is_set == false)	return(-1);
 	if (index >= (mf->field_len >> 3)) return(-1);
 
-	mf->u.ui64_a[index] = __bswap_64(v);
+	mf->u.ui64_a[index] = htobe64(v);
 
 	return(0);
 }
@@ -1612,7 +1606,7 @@ msg_dump(const msg *m, const char *info)
 					int n_ints = mf->field_len >> 3;
 					for (int j = 0; j < n_ints; j++) {
 						cf_info(CF_MSG, "      idx %d value %lu",
-								j, __bswap_64(mf->u.ui64_a[j]));
+								j, be64toh(mf->u.ui64_a[j]));
 					}
 				}
 				break;
