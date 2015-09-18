@@ -168,20 +168,18 @@ int as_index_vinfo_mask_set(as_index *index, as_partition_vinfo_mask m, bool all
 //
 
 typedef struct as_index_flag_bits_s {
-	uint8_t flag_bits: 6;
-	uint8_t do_not_use: 2; // These are used in single-bin mode.
+	uint8_t flag_bits: 4;
+	uint8_t do_not_use: 4; // These are used in single-bin mode.
 } as_index_flag_bits;
 
 typedef enum {
 	AS_INDEX_FLAG_SPECIAL_BINS	= 0x01, // first user of this is LDT (to denote sub-records)
 	AS_INDEX_FLAG_CHILD_REC		= 0x02, // child record of a regular record (LDT)
 	AS_INDEX_FLAG_CHILD_ESR		= 0x04, // special child existence sub-record (ESR)
-	AS_INDEX_FLAG_UNUSED_0x08	= 0x08,
-	AS_INDEX_FLAG_UNUSED_0x10	= 0x10,
-	AS_INDEX_FLAG_KEY_STORED	= 0x20, // for data-in-memory, dim points to as_rec_space
+	AS_INDEX_FLAG_KEY_STORED	= 0x08, // for data-in-memory, dim points to as_rec_space
 
 	// Combinations:
-	AS_INDEX_ALL_FLAGS			= 0x3F
+	AS_INDEX_ALL_FLAGS			= 0x0F
 } as_index_flag;
 
 static inline

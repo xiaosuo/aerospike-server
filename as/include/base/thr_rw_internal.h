@@ -106,32 +106,10 @@ typedef struct write_local_generation {
 	bool use_msg_gen;
 } write_local_generation;
 
-
-int write_local_preprocessing(
-	as_transaction *,
-	write_local_generation *,
-	bool,
-	bool *
-	);
-
-void write_local_post_processing(
-	as_transaction *,
-	as_namespace *,
-	as_partition_reservation *,
-	uint8_t **,
-	size_t *,
-	uint32_t *,
-	as_rec_props *,
-	bool,
-	write_local_generation *,
-	as_index *,
-	as_storage_rd *,
-	int64_t
-	);
-
 typedef struct ldt_prole_info_s {
 	bool        replication_partition_version_match;
 	uint64_t    ldt_source_version;
+	bool        ldt_source_version_set;
 	uint64_t    ldt_prole_version;
 	bool        ldt_prole_version_set;
 } ldt_prole_info;
@@ -153,6 +131,19 @@ extern bool msg_has_key(as_msg* m);
 extern bool check_msg_key(as_msg* m, as_storage_rd* rd);
 extern bool get_msg_key(as_msg* m, as_storage_rd* rd);
 
+extern void update_metadata_in_index(as_transaction *tr, bool increment_generation, as_index *r);
+
+typedef struct pickle_info_s {
+	uint8_t*	rec_props_data;
+	uint32_t	rec_props_size;
+	uint8_t*	buf;
+	size_t		buf_size;
+} pickle_info;
+
+extern bool pickle_all(as_storage_rd *rd, pickle_info *pickle);
+
+extern void account_memory(as_transaction *tr, as_storage_rd *rd, uint64_t start_bytes);
+
 extern int rw_udf_replicate(udf_record *urecord);
 
 extern int
@@ -162,9 +153,8 @@ rw_msg_setup(
 	cf_digest *keyd,
 	uint8_t ** p_pickled_buf,
 	size_t pickled_sz,
-	uint32_t pickled_void_time,
 	as_rec_props * p_pickled_rec_props,
 	int op,
-	uint16_t ldt_rectype_bits,
-	bool has_udf
+	bool has_udf,
+	bool is_subrec
 	);

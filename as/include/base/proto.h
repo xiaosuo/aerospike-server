@@ -103,6 +103,11 @@ struct as_file_handle_s;
 // LDT (and general collection) Errors (125 - 140)
 #define AS_PROTO_RESULT_FAIL_COLLECTION_ITEM_NOT_FOUND 125 // Item not found
 
+// Batch Errors (150 - 160)
+#define AS_PROTO_RESULT_FAIL_BATCH_DISABLED		150 // batch functionality has been disabled
+#define AS_PROTO_RESULT_FAIL_BATCH_MAX_REQUESTS	151 // batch-max-requests has been exceeded
+#define AS_PROTO_RESULT_FAIL_BATCH_QUEUES_FULL	152 // all batch queues are full
+
 // Secondary Index Query Failure Codes 200 - 230
 #define AS_PROTO_RESULT_FAIL_INDEX_FOUND       200
 #define AS_PROTO_RESULT_FAIL_INDEX_NOTFOUND    201
@@ -117,6 +122,7 @@ struct as_file_handle_s;
 #define AS_PROTO_RESULT_FAIL_QUERY_TIMEOUT     212
 #define AS_PROTO_RESULT_FAIL_QUERY_CBERROR     213
 #define AS_PROTO_RESULT_FAIL_QUERY_NETIO_ERR   214
+#define AS_PROTO_RESULT_FAIL_QUERY_DUPLICATE   215
 
 
 /* SYNOPSIS
@@ -224,6 +230,7 @@ typedef struct as_msg_field_s {
 // #define AS_MSG_FIELD_TYPE_SPROC_RECORD_PARAMS	39
 
 #define AS_MSG_FIELD_TYPE_QUERY_BINLIST			40
+#define AS_MSG_FIELD_TYPE_BATCH					41
 
 	/* NB: field_sz is sizeof(type) + sizeof(data) */
 	uint32_t field_sz; // get the data size through the accessor function, don't worry, it's a small macro
@@ -251,8 +258,11 @@ typedef struct index_metadata_t {
 
 #define AS_MSG_OP_READ 1			// read the value in question
 #define AS_MSG_OP_WRITE 2			// write the value in question
-// Unused - 3
-// Unused - 4
+
+// Prospective CDT top-level ops:
+#define AS_MSG_OP_CDT_READ 3
+#define AS_MSG_OP_CDT_MODIFY 4
+
 #define AS_MSG_OP_INCR 5			// arithmetically add a value to an existing value, works only on integers
 // Unused - 6
 // Unused - 7
@@ -292,7 +302,7 @@ static inline uint8_t * as_msg_op_get_value_p(as_msg_op *op)
 	return (uint8_t*)op + sizeof(as_msg_op) + op->name_sz;
 }
 
-static inline uint32_t as_msg_op_get_value_sz(as_msg_op *op)
+static inline uint32_t as_msg_op_get_value_sz(const as_msg_op *op)
 {
 	return op->op_sz - (4 + op->name_sz);
 }
@@ -364,8 +374,8 @@ typedef struct cl_msg_s {
 
 #define AS_MSG_INFO1_READ				(1 << 0) // contains a read operation
 #define AS_MSG_INFO1_GET_ALL			(1 << 1) // get all bins, period
-#define AS_MSG_INFO1_GET_ALL_NODATA		(1 << 2) // get all bins WITHOUT data (currently unimplemented)
-// (Note:  Bit 3 is unused.)
+// (Note:  Bit 2 is unused.)
+#define AS_MSG_INFO1_BATCH				(1 << 3) // new batch protocol
 #define AS_MSG_INFO1_XDR				(1 << 4) // operation is being performed by XDR
 #define AS_MSG_INFO1_GET_NOBINDATA		(1 << 5) // Do not get information about bins and its data
 #define AS_MSG_INFO1_CONSISTENCY_LEVEL_B0	(1 << 6) // read consistency level - bit 0
@@ -375,10 +385,10 @@ typedef struct cl_msg_s {
 #define AS_MSG_INFO2_DELETE				(1 << 1) // delete record
 #define AS_MSG_INFO2_GENERATION			(1 << 2) // pay attention to the generation
 #define AS_MSG_INFO2_GENERATION_GT		(1 << 3) // apply write if new generation >= old, good for restore
-#define AS_MSG_INFO2_GENERATION_DUP		(1 << 4) // if a generation collision, create a duplicate
+// (Note:  Bit 4 is unused.)
 #define AS_MSG_INFO2_CREATE_ONLY		(1 << 5) // write record only if it doesn't exist
 #define AS_MSG_INFO2_BIN_CREATE_ONLY	(1 << 6) // write bin only if it doesn't exist
-#define AS_MSG_INFO2_WRITE_MERGE		(1 << 7) // merge this with current
+#define AS_MSG_INFO2_RESPOND_ALL_OPS	(1 << 7) // all bin ops (read, write, or modify) require a response, in request order
 
 #define AS_MSG_INFO3_LAST				(1 << 0) // this is the last of a multi-part message
 #define AS_MSG_INFO3_COMMIT_LEVEL_B0  	(1 << 1) // write commit level - bit 0
@@ -485,12 +495,14 @@ extern void as_proto_swap(as_proto *m);
 extern void as_msg_swap_header(as_msg *m);
 extern void as_msg_swap_field(as_msg_field *mf);
 extern int as_msg_swap_fields(as_msg *m, void *limit);
+extern void as_msg_swap_op(as_msg_op *op);
 extern int as_msg_swap_ops(as_msg *m, void *limit);
 extern int as_msg_swap_fields_and_ops(as_msg *m, void *limit);
 extern int as_msg_send_reply(struct as_file_handle_s *fd_h, uint32_t result_code,
 		uint32_t generation, uint32_t void_time, as_msg_op **ops,
 		struct as_bin_s **bins, uint16_t bin_count, struct as_namespace_s *ns,
 		uint *written_sz, uint64_t trid, const char *setname);
+extern int as_msg_send_ops_reply(struct as_file_handle_s *fd_h, cf_dyn_buf *db);
 
 extern cl_msg *as_msg_make_response_msg(uint32_t result_code, uint32_t generation,
 		uint32_t void_time, as_msg_op **ops, struct as_bin_s **bins,
@@ -544,6 +556,7 @@ typedef struct as_netio_s {
 	uint32_t                   offset;
 	uint32_t                   seq;
 	bool                       slow;
+	uint64_t                   start_time;
 } as_netio;
 
 void as_netio_init();
@@ -552,3 +565,4 @@ int as_netio_send(as_netio *io, void *q, bool);
 #define AS_NETIO_OK        0
 #define AS_NETIO_CONTINUE  1
 #define AS_NETIO_ERR       2 
+#define AS_NETIO_IO_ERR    3 

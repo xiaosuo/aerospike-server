@@ -31,6 +31,7 @@
 #include "citrusleaf/cf_clock.h"
 #include "citrusleaf/cf_digest.h"
 
+#include "dynbuf.h"
 #include "msg.h"
 #include "util.h"
 
@@ -93,8 +94,10 @@ typedef struct write_request_s {
 	// they might or might not have.
 	uint8_t            * pickled_buf;
 	size_t               pickled_sz;
-	uint32_t             pickled_void_time;
 	as_rec_props         pickled_rec_props;
+
+	// Store ops' responses here.
+	cf_dyn_buf           response_db;
 
 	cf_atomic32          trans_complete; // make sure transaction gets processed only once
 	cf_atomic32          dupl_trans_complete; // if 0, we are in 'dup' phase (and use atomic to only-once
@@ -114,7 +117,6 @@ typedef struct write_request_s {
 	ureq_data            udata;
 	bool                 shipped_op;
 	bool                 shipped_op_initiator;
-	uint8_t              ldt_rectype_bits;
 	bool                 has_udf;
 
 	as_partition_reservation rsv;
@@ -128,6 +130,10 @@ typedef struct write_request_s {
 	// response that comes back from a given node
 	msg                * dup_msg[AS_CLUSTER_SZ];
 	int                  dup_result_code[AS_CLUSTER_SZ];
+
+	// Batch common data.
+	struct as_batch_shared* batch_shared;
+	uint32_t batch_index;
 } write_request; // this is really an rw_request, but the old name looks pretty
 
 void write_request_destructor (void *object);

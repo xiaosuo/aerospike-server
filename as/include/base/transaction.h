@@ -167,6 +167,8 @@ typedef struct udf_request_data {
 // Set if this transaction has touched secondary index
 #define AS_TRANSACTION_FLAG_SINDEX_TOUCHED  0x0010
 
+struct as_batch_shared;
+
 /* as_transaction
  * The basic unit of work
  *
@@ -210,14 +212,14 @@ typedef struct as_transaction_s {
 	/* the reservation of the partition (and thus tree) I'm acting against */
 	as_partition_reservation rsv;
 
-	/******* In frequently or conditionally accessed Accessed Fields ************/
+	/******* Infrequently or conditionally accessed fields ************/
 	/* The origin of the transaction: either a file descriptor for a socket
 	 * or a node ID */
 	as_file_handle	* proto_fd_h;
 	cf_node 	      proxy_node;
 	msg 		    * proxy_msg;
 
-	/* User data corresponsing to the internally created transaction
+	/* User data corresponding to the internally created transaction
 	   first user is Scan UDF */
 	ureq_data         udata;
 
@@ -227,7 +229,12 @@ typedef struct as_transaction_s {
 	/* incoming cluster key passed in a proxy request */
 	uint64_t          incoming_cluster_key;
 
-	// RESPONSE RESPONSE RESPONSE
+	// Batch
+	struct as_batch_shared* batch_shared;
+	uint32_t batch_index;
+
+	// TODO - another re-org of this structure...
+	uint32_t void_time;
 
 } as_transaction;
 
@@ -237,14 +244,6 @@ extern int write_delete_local(as_transaction *tr, bool journal, cf_node masterno
 extern int as_transaction_prepare(as_transaction *tr);
 extern void as_transaction_init(as_transaction *tr, cf_digest *, cl_msg *);
 extern int as_transaction_digest_validate(as_transaction *tr);
-
-// When you hold an as_record, you should also hold its vlock. So keep them all
-// in one bundle.
-typedef struct as_record_lock_s {
-	as_partition 	*part;
-	as_index_ref  	r_ref;
-	as_storage_rd	store_rd;
-} as_record_lock;
 
 struct udf_call_s; // forward declaration for udf_call, defined in udf_rw.h
 

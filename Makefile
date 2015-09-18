@@ -85,11 +85,12 @@ init:
 
 start:
 	@echo "Running the Aerospike Server locally..."
+	@PIDFILE=run/asd.pid ; if [ -f $$PIDFILE ]; then echo "Aerospike already running?  Please do \"make stop\" first."; exit -1; fi
 	$(BIN_DIR)/asd --config-file as/etc/aerospike_dev.conf
 
 stop:
 	@echo "Stopping the local Aerospike Server..."
-	PIDFILE=run/asd.pid ; if [ -f $$PIDFILE ]; then kill `cat $$PIDFILE`; rm $$PIDFILE; fi
+	@PIDFILE=run/asd.pid ; if [ -f $$PIDFILE ]; then kill `cat $$PIDFILE`; rm $$PIDFILE; fi
 
 .PHONY: clean
 clean:	cleanmodules cleandist
@@ -142,7 +143,7 @@ rpm deb tar src:
 	$(MAKE) -C pkg/$@ EDITION=$(EDITION)
 
 $(VERSION_SRC):	targetdirs
-	build/gen_version $(EDITION) > $(VERSION_SRC)
+	build/gen_version $(EDITION) $(shell $(DEPTH)/build/os_version) > $(VERSION_SRC)
 
 $(VERSION_OBJ):	$(VERSION_SRC)
 	$(CC) -o $@ -c $<
@@ -188,11 +189,8 @@ $(JEMALLOC)/Makefile: $(JEMALLOC)/configure
 $(LUAJIT)/src/luaconf.h: $(LUAJIT)/src/luaconf.h.orig
 	ln -s $(notdir $<) $@
 
-
-
 .PHONY: source
 source: src
-
 
 tags etags:
 	etags `find ai as cf modules xdr $(EEREPO) -name "*.[ch]" | egrep -v '(target/Linux|m4)'` `find /usr/include -name "*.h"`

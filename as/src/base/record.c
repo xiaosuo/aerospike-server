@@ -31,7 +31,6 @@
 #include <stddef.h>
 #include <stdint.h>
 #include <string.h>
-#include <time.h> // for as_record_void_time_get() - TODO - replace with clock function
 #include <netinet/in.h>
 #include <sys/param.h>
 
@@ -169,7 +168,7 @@ as_record_clean_bins_from(as_storage_rd *rd, uint16_t from)
 		as_bin *b = &rd->bins[i];
 
 		if (as_bin_inuse(b)) {
-			as_particle_destroy(b, rd->ns->storage_data_in_memory);
+			as_bin_particle_destroy(b, rd->ns->storage_data_in_memory);
 			as_bin_set_empty(b);
 		}
 	}
@@ -359,18 +358,14 @@ as_record_pickle(as_record *r, as_storage_rd *rd, byte **buf_r, size_t *len_r)
 	// only pickle the n_bins in use
 	uint16_t n_bins_inuse = as_bin_inuse_count(rd);
 
-	uint32_t psz[n_bins_inuse];
-
 	for (uint16_t i = 0; i < n_bins_inuse; i++) {
 		as_bin *b = &rd->bins[i];
 
 		sz += 1; // binname-len field
 		sz += rd->ns->single_bin ? 0 : strlen(as_bin_get_name_from_id(rd->ns, b->id)); // number of bytes in the name
-		sz += 2; // version, bintype
-		sz += 4; // datalen
+		sz += 1; // version
 
-		as_particle_tobuf(b, 0, &psz[i]); // get the length
-		sz += psz[i];
+		sz += as_bin_particle_pickled_size(b);
 	}
 
 	byte *buf = cf_malloc(sz);
@@ -395,12 +390,7 @@ as_record_pickle(as_record *r, as_storage_rd *rd, byte **buf_r, size_t *len_r)
 		buf += namelen;
 		*buf++ = as_bin_get_version(b, rd->ns->single_bin);
 
-		*buf++ = as_bin_get_particle_type(b);
-		uint32_t *psz_p = (uint32_t *) buf;    // keep a pointer to the spot you need to patch for particle sz
-		buf += sizeof(uint32_t);
-		as_particle_tobuf(b, buf, &psz[i]); // get the data
-		*psz_p = htonl(psz[i]);
-		buf += psz[i];
+		buf += as_bin_particle_to_pickled(b, buf);
 	}
 
 	if (buf > buf_lim)
@@ -443,75 +433,10 @@ as_record_buf_get_stack_particles_sz(uint8_t *buf) {
 		byte name_sz = *buf;
 		buf += name_sz + 2;
 
-		as_particle_type type = *buf++;
-		uint32_t d_sz = *(uint32_t *) buf;
-		d_sz = ntohl(d_sz);
-		buf += 4 + d_sz;
-
-		if (type != AS_PARTICLE_TYPE_INTEGER) {
-			stack_particles_sz += as_particle_get_base_size(type) + d_sz;
-		}
+		stack_particles_sz += as_particle_size_from_pickled(&buf);
 	}
 
 	return (stack_particles_sz);
-}
-
-uint16_t
-as_record_count_unpickle_merge_bins_to_create(as_storage_rd *rd, uint8_t *buf, int sz) {
-	uint16_t bins_to_create = 0;
-
-	// create a 'version map'
-	int8_t vmap[BIN_VERSION_MAX];
-	memset(vmap, -1, sizeof(vmap));
-
-	uint8_t *buf_lim = buf + sz;
-
-	uint16_t newbins = ntohs( *(uint16_t *) buf );
-	buf += 2;
-
-	for (uint16_t i = 0; i < newbins; i++) {
-		if (buf >= buf_lim) {
-			cf_crash(AS_RECORD, "as_record_unpickle_merge_bins_to_create: bad format, bin %u of %u", i, newbins);
-		}
-
-		byte name_sz = *buf++;
-		byte *name = buf;
-		buf += name_sz;
-		buf++;
-
-		as_particle_type type = *buf++;
-		uint32_t d_sz = ntohl(*(uint32_t*)buf);
-		buf += 4;
-
-		as_bin *curr_bins[BIN_VERSION_MAX];
-		memset(curr_bins, 0, sizeof(curr_bins));
-		// get the bin from existing record. if bin exists and the value is same do not write.
-		uint16_t n_curr_bins = as_bin_get_all_versions(rd, name, name_sz, curr_bins);
-
-		uint16_t j;
-		for (j = 0; j < n_curr_bins; j++) {
-			if (! curr_bins[j]) {
-				cf_debug(AS_RECORD, " vinfo set procesing error : null bin pointer encountered %d", j);
-				continue;
-			}
-
-			if (! as_particle_compare_frombuf(curr_bins[j], type, buf, d_sz)) {
-				break; // same particle
-			}
-		}
-
-		if (j == n_curr_bins) {
-			bins_to_create++;
-		}
-
-		buf += d_sz;
-	}
-
-	if (buf > buf_lim) {
-		cf_crash(AS_RECORD, "as_record_unpickle_merge_bins_to_create: bad format, last bin of %u", newbins);
-	}
-
-	return(bins_to_create);
 }
 
 // the unpickle merge
@@ -520,107 +445,7 @@ as_record_count_unpickle_merge_bins_to_create(as_storage_rd *rd, uint8_t *buf, i
 int
 as_record_unpickle_merge(as_record *r, as_storage_rd *rd, uint8_t *buf, size_t sz, uint8_t **stack_particles, bool *record_written)
 {
-	as_namespace *ns = rd->ns;
-
-	// create a 'version map'
-	int8_t vmap[BIN_VERSION_MAX];
-	memset(vmap, -1, sizeof(vmap));
-
-	uint8_t *buf_lim = buf + sz;
-
-	uint16_t newbins = ntohs( *(uint16_t *) buf );
-	buf += 2;
-
-	if (newbins == 0)
-		cf_debug(AS_RECORD, " merge: received record with no bins, illegal");
-
-	// allocate memory for new bins, if necessary
-	if (rd->ns->storage_data_in_memory && ! rd->ns->single_bin) {
-		uint16_t bins_to_create = as_record_count_unpickle_merge_bins_to_create(rd, buf - 2, sz);
-		if (bins_to_create) {
-			as_bin_allocate_bin_space(r, rd, (int32_t)bins_to_create);
-		}
-	}
-
-	int sindex_ret = AS_SINDEX_OK;
-	bool has_sindex = as_sindex_ns_has_sindex(rd->ns);
-
-	if (has_sindex) {
-		SINDEX_GRLOCK();
-	}
-   
-	SINDEX_BINS_SETUP(sbins, ns->sindex_cnt);
-	int sindex_found = 0;
-
-	for (uint16_t i = 0; i < newbins; i++) {
-		if (buf >= buf_lim) {
-			cf_crash(AS_RECORD, "as_record_unpickle_merge: bad format, bin %u of %u", i, newbins);
-		}
-
-		byte name_sz = *buf++;
-		byte *name = buf;
-		buf += name_sz;
-		uint8_t version = *buf++;
-
-		as_particle_type type = *buf++;
-		uint32_t d_sz = ntohl(*(uint32_t*)buf);
-		buf += 4;
-
-		as_bin *curr_bins[BIN_VERSION_MAX];
-		memset(curr_bins, 0, sizeof(curr_bins));
-		// get the bin from existing record. if bin exists and the value is same do not write.
-		uint16_t n_curr_bins = as_bin_get_all_versions(rd, name, name_sz, curr_bins);
-
-		uint16_t j;
-		for (j = 0; j < n_curr_bins; j++) {
-			if (!curr_bins[j]) {
-				cf_debug(AS_RECORD, " vinfo set procesing error : null bin pointer encountered %d", j);
-				continue;
-			}
-
-			if (! as_particle_compare_frombuf(curr_bins[j], type, buf, d_sz)) {
-				break; // same particle
-			}
-		}
-
-		if (j == n_curr_bins) {
-			cf_debug(AS_RECORD, " vinfo set missing : processing bin with type %d", type);
-			if (vmap[version] == -1)
-				vmap[version] = as_record_unused_version_get(rd);
-			as_bin *b = as_bin_create(r, rd, name, name_sz, vmap[version]);
-			as_particle_frombuf(b, type, buf, d_sz, *stack_particles, ns->storage_data_in_memory);
-
-			if (has_sindex) {
-				sindex_found += as_sindex_sbins_from_bin(ns, as_index_get_set_name(rd->r, ns), 
-													b, &sbins[sindex_found], AS_SINDEX_OP_INSERT);	
-			}
-
-			if (! ns->storage_data_in_memory && type != AS_PARTICLE_TYPE_INTEGER) {
-				*stack_particles += as_particle_get_base_size(type) + d_sz;
-			}
-			rd->write_to_device = true;
-			if (record_written) {
-				*record_written = true;
-			}
-			break;
-		}
-
-		buf += d_sz;
-	}
-
-	if (has_sindex) {
-		SINDEX_GUNLOCK();
-		if (sindex_found) {
-			cf_detail(AS_RECORD, "Sindex Insert @ %s %d", __FILE__, __LINE__);
-			as_sindex_update_by_sbin(ns, as_index_get_set_name(rd->r, ns), sbins, sindex_found, &rd->keyd);
-			if (sindex_ret != AS_SINDEX_OK) cf_warning(AS_RECORD, "Failed: %s", as_sindex_err_str(sindex_ret));
-			as_sindex_sbin_freeall(sbins, sindex_found);
-		}
-	}
-	if (buf > buf_lim) {
-		cf_crash(AS_RECORD, "as_record_unpickle_merge: bad format, last bin of %u", newbins);
-	}
-
+	cf_crash(AS_RECORD, "as_record_unpickle_merge() should be unreachable");
 	return(0);
 }
 
@@ -697,26 +522,20 @@ as_record_unpickle_replace(as_record *r, as_storage_rd *rd, uint8_t *buf, size_t
 			as_bin_set_id_from_name_buf(ns, b, name, name_sz);
 		}
 		else {
-			b = as_bin_create(r, rd, name, name_sz, version);
+			// TODO - what if this fails?
+			b = as_bin_create_from_buf(rd, name, name_sz);
 		}
 
-		as_particle_type type = *buf++;
-		uint32_t d_sz         = *(uint32_t *) buf;
-		buf                  += 4;
-		d_sz                  = ntohl(d_sz);
-
-		as_particle_frombuf(b, type, buf, d_sz, *stack_particles, ns->storage_data_in_memory);
+		if (ns->storage_data_in_memory) {
+			as_bin_particle_replace_from_pickled(b, &buf);
+		}
+		else {
+			*stack_particles += as_bin_particle_stack_from_pickled(b, *stack_particles, &buf);
+		}
 
 		if (has_sindex) {
-			sindex_found      += as_sindex_sbins_from_bin(ns, set_name, b, &sbins[sindex_found], AS_SINDEX_OP_INSERT);
+			sindex_found += as_sindex_sbins_from_bin(ns, set_name, b, &sbins[sindex_found], AS_SINDEX_OP_INSERT);
 		}
-
-
-		if (! ns->storage_data_in_memory && type != AS_PARTICLE_TYPE_INTEGER) {
-			*stack_particles += as_particle_get_base_size(type) + d_sz;
-		}
-
-		buf += d_sz;
 	}
 
 	if (buf > buf_lim) {
@@ -1054,8 +873,8 @@ as_record_merge(as_partition_reservation *rsv, cf_digest *keyd, uint16_t n_compo
 
 	int rv = as_record_get_create(tree, keyd, &r_ref, rsv->ns, false);
 	if (rv == -1) {
-		cf_warning_digest(AS_RECORD, keyd, "{%s} record merge: could not get-create record ", rsv->ns->name);
-		return(-1);
+		cf_debug_digest(AS_RECORD, keyd, "{%s} record merge: could not get-create record ", rsv->ns->name);
+		return(-3);
 	}
 	as_record *r = r_ref.r;
 
@@ -1456,8 +1275,8 @@ as_record_flatten(as_partition_reservation *rsv, cf_digest *keyd,
 	as_index  *r        = NULL;
 	int ret             = as_record_get_create(tree, keyd, &r_ref, rsv->ns, is_subrec);
 	if (-1 == ret) {
-		cf_warning_digest(AS_RECORD, keyd, "{%s} record flatten: could not get-create record %b", rsv->ns->name, is_subrec);
-		return(-1);
+		cf_debug_digest(AS_RECORD, keyd, "{%s} record flatten: could not get-create record %b", rsv->ns->name, is_subrec);
+		return(-3);
 	} else if (ret) {
 		has_local_copy  = false;
 		r               = r_ref.r;
@@ -1495,7 +1314,7 @@ as_record_flatten(as_partition_reservation *rsv, cf_digest *keyd,
 				cf_warning(AS_RECORD, "DUMMY LDT Component in Non Duplicate Resolution Code");
 				rv = -1;
 			} else {
-					cf_detail(AS_LDT, "Ship Operation");
+				cf_detail(AS_LDT, "Ship Operation");
 				// NB: DO NOT CHANGE THIS RETURN. IT MEANS A SPECIAL THING TO THE CALLER
 				rv = -2;
 			}
@@ -2045,12 +1864,9 @@ as_partition_vinfo_dump(as_partition_vinfo *vinfo, char *msg)
 			vinfo->vtp[6], vinfo->vtp[7], vinfo->vtp[8], vinfo->vtp[9], vinfo->vtp[10], vinfo->vtp[11] );
 }
 
-
-// TOD0 - seems redundant, should use clock function.
-uint32_t
-as_record_void_time_get()
+// TODO - inline this, if/when we unravel header files.
+bool
+as_record_is_expired(as_record *r)
 {
-	struct timespec ts;
-	clock_gettime(CLOCK_REALTIME, &ts);
-	return ts.tv_sec - CITRUSLEAF_EPOCH;
+	return r->void_time != 0 && r->void_time < as_record_void_time_get();
 }
